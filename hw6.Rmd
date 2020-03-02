@@ -2,12 +2,12 @@
 title: "Homework 6 - P8451"
 author: "Will Simmons"
 date: "3 March 2020"
-output: html_document
+output: word_document
 editor_options: 
   chunk_output_type: console
 ---
 
-```{r setup}
+```{r setup, message = FALSE, warning = FALSE}
 library(tidyverse)
 library(NHANES)
 library(caret)
@@ -60,7 +60,7 @@ rm(train_idx)
 
 ## a) Classification Tree
 
-First, I'll fit a classification tree using `caret`, tuning `Cp` using 10-fold cross-validation
+First, I'll fit a classification tree using `caret`, tuning `Cp` using 10-fold cross-validation.
 
 ```{r tree}
 set.seed(1)
@@ -77,9 +77,9 @@ tree_model =
   )
 ```
 
-As we can see in the graph of cross-validated tuning parameter values from this model, the max occurs at `Cp = `*`r tree_model$bestTune`*
+As we can see in the graph of cross-validated tuning parameter values from this model, the max occurs at `Cp = `**`r tree_model$bestTune`**.
 
-```{r tree_graph}
+```{r tree_graph, fig.width = 12}
 
 ggplot(tree_model)
 
@@ -110,7 +110,7 @@ table(tree_pred, train$Diabetes)
 
 
 ### Classification Tree Plot - Diabetes Yes/No
-```{r final_tree_plot}
+```{r final_tree_plot, fig.width = 12}
 
 rpart.plot::rpart.plot(tree_model$finalModel)
 
@@ -118,7 +118,7 @@ rpart.plot::rpart.plot(tree_model$finalModel)
 
 ## b) Support Vector Classifier (i.e. Support Vector Machine with a linear classifier)
 
-First, we'll tune a support vector classifier on the training data
+First, we'll tune a support vector classifier on the training data.
 
 ```{r}
 set.seed(1)
@@ -146,6 +146,7 @@ svm_model2 =
         trControl = tc,
         tuneGrid = expand.grid(C = cost)
   )
+
 ```
 
 After iteratively adjusting the range of cross-validated Cost values, we can see that the best Cost parameter is actually the smallest in all cases. This is because the SVC cannot seem to classify this unbalanced data any better than classifiying all observations as 'No' for diabetes.
@@ -154,8 +155,8 @@ After iteratively adjusting the range of cross-validated Cost values, we can see
 
 To illustrate this, we can create a confusion matrix for the SVC-classified data and see that the CV-tuned model simply classifies all observations as 'No'.
 
-```{r svm_besttune}
-svm_model2$bestTune
+```{r svm_besttune, echo = FALSE, eval = FALSE}
+#svm_model2$bestTune
 ```
 
 ```{r svm_confusion_matrix}
@@ -172,7 +173,7 @@ table(svm_pred, train$Diabetes)
 
 Finally, we can plot the cross-validated accuracy rates and see that the predictive accuracy does not change appreciably over small enough values of C.
 
-```{r svm_plot}
+```{r svm_plot, fig.width = 12}
 ggplot(svm_model2)
 ```
 
@@ -236,7 +237,7 @@ cv_data =
 
 In the table above, we can see that both mean and median accuracy rates (cross-validated) for `SVC` and `Tree` methods are nearly identical. Let's plot the distributions of their CV accuracy rates to look further.
 
-```{r}
+```{r, fig.width = 12}
 bwplot(resamp, 
        metric = "Accuracy", 
        main = "Cross-validated accuracy distribution for three models",
@@ -250,9 +251,9 @@ Therefore, since I know the SVC model will likely classify any new data as 'No' 
 
 # 4. Calculate final accuracy in a test set for the model you determine to be the most appropriate model.
 
-Finally, I'll calculate the test accuracy for the Classification Tree model and 
+Finally, I'll calculate the test accuracy for the Classification Tree model and perform some other diagnostics such as the ROC curve.
 
-```{r tree_test_error}
+```{r tree_test_error, message = FALSE, warning = FALSE, fig.align = "center"}
 
 set.seed(1)
 
@@ -285,8 +286,7 @@ We can see that the test accuracy for the classification tree model is equal to 
 Although the tree-based classification method demonstrated the 'best' predictive accuracy, we can still see that it classified the overwhelming majority of its new data as 'No' due to our unbalanced data. 
 
 ```{r tree_confusion_test}
-tree_results$table %>% 
-  knitr::kable(caption = "Confusion matrix, class. tree on test data")
+tree_results$table 
 
 ```
 
@@ -294,3 +294,4 @@ Additional methods are needed to address the issue of unbalanced data, in which 
 
 **Limitation 2.**
 
+A logical outcome of the previous limitation is that I would not use this model to predict diabetes outcomes in any population, given its extremely low sensitivity (**`r sensitivity(pred_diab, test$Diabetes, positive = "Yes")`**), even despite its high specificity (**`r specificity(pred_diab, test$Diabetes, negative = "No")`**). Clinicians or practitioners could essentially do just as well as this 'predictive' algorithm by classifying everyone as diabetes-negative.
