@@ -1,0 +1,209 @@
+---
+title: "Homework 6 - P8451"
+author: "Will Simmons"
+date: "3 March 2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup}
+library(tidyverse)
+library(NHANES)
+library(caret)
+library(pROC)
+library(e1071)
+```
+
+# 1. Restrict the NHANES data to the list of 12 variables below. Partition the data into training and testing using a 70/30 split.
+
+```{r data}
+set.seed(1)
+
+data =
+  NHANES %>% 
+  select("Age", "Gender", "Race1", "Education", "HHIncome", "Weight", "Height", "Pulse", "Diabetes", "BMI", "PhysActive", "Smoke100")
+
+# Amelia::missmap(data)
+## need to drop missing
+
+data = 
+  data %>% 
+  drop_na() %>% 
+  mutate(
+    Diabetes = relevel(Diabetes, ref = "No")
+  )
+
+# data_tf =
+#   data %>% 
+#   drop_na() %>% 
+#   mutate(
+#     Diabetes = relevel(Diabetes, ref = "No"),
+#     Diabetes_tf = as.numeric(Diabetes) - 1,
+#     Diabetes_tf = as.logical(Diabetes_tf))
+
+## all data formats look correct by default
+
+train_idx =
+  createDataPartition(data$Diabetes,
+                      p = 0.7, 
+                      list = FALSE)
+
+train = data[train_idx, ]
+test = data[-train_idx, ]
+
+rm(train_idx)
+  
+```
+
+# 2. Construct three prediction models to predict diabetes using the 11 features from NHANES. You will use the following three algorithms to create your prediction models:
+
+## a) Classification Tree
+
+First, I'll fit a classification tree using `caret`, tuning `Cp` using 10-fold cross-validation
+
+```{r tree}
+set.seed(1)
+
+tc = trainControl(method = "cv", number = 10)
+cp = 10^seq(-3, -1.9, length = 100) ## found range iteratively
+
+tree_model = 
+  train(Diabetes~.,
+        data = train,
+        method = "rpart",
+        trControl = tc,
+        tuneGrid = expand.grid(cp = cp)
+  )
+```
+
+As we can see in the graph of cross-validated tuning parameter values from this model, the max occurs at `Cp = `*`r tree_model$bestTune`*
+
+```{r tree_graph}
+
+ggplot(tree_model)
+
+tree_model$bestTune
+## 0.01025914
+
+```
+
+Finally, we'll look at the characteristics of our final classification tree, including important variables and the final tree visualization
+
+### Important variables - tree-based model
+```{r final_tree_imp}
+varImp(tree_model$finalModel) %>% 
+  rownames_to_column(var = "Variable") %>% 
+  arrange(desc(Overall)) %>% 
+  rename(Importance = Overall) %>% 
+  knitr::kable()
+```
+
+### Classification Tree Plot - Diabetes Yes/No
+```{r final_tree_plot}
+
+rpart.plot::rpart.plot(tree_model$finalModel)
+
+```
+
+### Calculating test error
+
+```{r tree_test_error}
+
+set.seed(1)
+
+pred_diab = predict(tree_model, test)
+pred_diab_prob =  predict(tree_model, test, type = "prob")
+
+tree_results = confusionMatrix(pred_diab, test$Diabetes, positive = "Yes")
+print(tree_results)
+
+analysis = roc(response = test$Diabetes, predictor = pred_diab_prob[,2])
+plot(1 - analysis$specificities, analysis$sensitivities, type = "l",
+     ylab = "Sensitiviy", 
+     xlab = "1-Specificity",
+     col = "black",
+     lwd = 2,
+     main = "ROC Curve for Diabetes - Classification Tree Model")
+     
+abline(a = 0, b = 1)
+
+tree_results$overall
+
+```
+
+
+
+## b) Support Vector Classifier (i.e. Support Vector Machine with a linear classifier)
+
+```{r}
+
+set.seed(1)
+
+cost_list = list(cost = 10^seq(-3, 0, length = 100))
+
+# train_outcome =
+#   train[, 9] %>% 
+#   mutate(Diabetes = as.numeric(Diabetes) - 1,
+#          Diabetes = as.logical(Diabetes))
+# 
+# train_features = train[, -9]
+# #train_outcome = train[, 9]
+
+svm_model =
+  tune(svm,
+       train.x = Diabetes~.,
+       data = sample_frac(train, 0.01),
+       kernel = "linear",
+       range = cost_list,
+       scale = TRUE)
+
+svm_model$best.parameters
+svm_model$performances
+plot(svm_model)
+
+# svm_test = 
+#   svm(Diabetes~., 
+#       data = train, 
+#       kernel = "linear", 
+#       cost = 1, scale=TRUE)   
+
+print(svm_test)
+
+svm.pred<-predict(svm.heart, newdata=training[,1:13])
+table(svm.pred, training$outcome)
+
+misClasificError <- mean(svm.pred != training$outcome, na.rm=T)
+print(paste('Accuracy Model 1',1-misClasificError))
+
+features<-training[,1:13]
+outcome<-training$outcome
+
+svm_tune <- tune(svm, train.x=features, train.y=outcome,  kernel="linear", range=list(cost=10^seq(-3, -1, length = 100)))
+
+summary(svm_tune)
+plot(svm_tune)
+
+```
+
+
+## c) Logistic regression
+
+# 3. You will optimize each model using cross-validation to choose hyperparameters in the training data and then compare performance across models.
+
+## Comparing performance across models
+
+```{r}
+resamp <- resamples(list(tree = tree_model, 
+                         svm = svm_model, 
+                         logistic = logistic_model))
+
+summary(resamp)
+
+bwplot(resamp, metric = "RMSE")
+```
+
+
+# 4. Calculate final accuracy in a test set for the model you determine to be the most appropriate model.
+
+# 5. List and describe at least two limitations of the model generated by this analysis. Limitations can be analytical or they can be regarding how the model would be used in practice.

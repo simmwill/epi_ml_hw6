@@ -1,0 +1,27 @@
+SCRAPS
+
+### Validation/train error? -- DON'T WANT TO DO THIS?
+
+```{r tree_train_error}
+
+set.seed(1)
+
+pred_diab_tr = predict(tree_model, train)
+pred_diab_prob_tr =  predict(tree_model, train, type = "prob")
+
+tree_results_tr = confusionMatrix(pred_diab_tr, train$Diabetes, positive = "Yes")
+print(tree_results_tr)
+
+analysis = roc(response = train$Diabetes, predictor = pred_diab_prob_tr[,2])
+plot(1 - analysis$specificities, analysis$sensitivities, type = "l",
+     ylab = "Sensitiviy", 
+     xlab = "1-Specificity",
+     col = "black",
+     lwd = 2,
+     main = "ROC Curve for Diabetes (Training Data) - Classification Tree Model")
+     
+abline(a = 0, b = 1)
+
+tree_results_tr$overall
+
+```
