@@ -25,3 +25,52 @@ abline(a = 0, b = 1)
 tree_results_tr$overall
 
 ```
+
+
+
+
+
+### Train/validation error for tree
+
+```{r tree_error}
+
+tree_pred = predict(tree_model, newdata = train[, -9])
+table(tree_pred, train$Diabetes)
+
+misClasificError = mean(tree_pred != train$Diabetes, na.rm=T)
+tree_acc = (1-misClasificError)
+
+```
+
+
+### Calculating test error
+
+```{r tree_test_error}
+
+set.seed(1)
+
+pred_diab = predict(tree_model, test)
+pred_diab_prob =  predict(tree_model, test, type = "prob")
+
+tree_results = confusionMatrix(pred_diab, test$Diabetes, positive = "Yes")
+print(tree_results)
+
+analysis = roc(response = test$Diabetes, predictor = pred_diab_prob[,2])
+plot(1 - analysis$specificities, analysis$sensitivities, type = "l",
+     ylab = "Sensitiviy", 
+     xlab = "1-Specificity",
+     col = "black",
+     lwd = 2,
+     main = "ROC Curve for Diabetes - Classification Tree Model")
+     
+abline(a = 0, b = 1)
+
+tree_results$overall
+
+```
+svm_ex =
+  svm(Diabetes~.,
+      data = train,
+      kernel = "linear",
+      cost = 1e-100, scale=TRUE)
+

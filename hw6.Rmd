@@ -88,7 +88,7 @@ tree_model$bestTune
 
 ```
 
-Finally, we'll look at the characteristics of our final classification tree, including important variables and the final tree visualization
+Finally, we'll look at the characteristics of our final classification tree, including important variables, a confusion matrix of how the model has classified the training data, and the final tree visualization. 
 
 ### Important variables - tree-based model
 ```{r final_tree_imp}
@@ -99,6 +99,16 @@ varImp(tree_model$finalModel) %>%
   knitr::kable()
 ```
 
+### Confusion matrix - tree-based model
+
+```{r tree_confusion}
+
+tree_pred = predict(tree_model, newdata = train[, -9])
+table(tree_pred, train$Diabetes)
+
+```
+
+
 ### Classification Tree Plot - Diabetes Yes/No
 ```{r final_tree_plot}
 
@@ -106,7 +116,141 @@ rpart.plot::rpart.plot(tree_model$finalModel)
 
 ```
 
-### Calculating test error
+## b) Support Vector Classifier (i.e. Support Vector Machine with a linear classifier)
+
+First, we'll tune a support vector classifier on the training data
+
+```{r}
+set.seed(1)
+
+# cost_list = list(cost = 10^seq(-100, 0, length = 100))
+cost = 10^seq(-1, 1, length = 3)
+
+# svm_model =
+#   tune(svm,
+#        train.x = Diabetes~.,
+#        data = sample_frac(train, 0.01),
+#        kernel = "linear",
+#        range = cost_list,
+#        scale = TRUE)
+
+
+# svm_model$best.parameters
+# svm_model$performances
+# plot(svm_model)
+
+svm_model2 = 
+  train(Diabetes~.,
+        data = train,
+        method = "svmLinear",
+        trControl = tc,
+        tuneGrid = expand.grid(C = cost)
+  )
+```
+
+After iteratively adjusting the range of cross-validated Cost values, we can see that the best Cost parameter is actually the smallest in all cases. This is because the SVC cannot seem to classify this unbalanced data any better than classifiying all observations as 'No' for diabetes.
+
+### Confusion matrix - SVM
+
+To illustrate this, we can create a confusion matrix for the SVC-classified data and see that the CV-tuned model simply classifies all observations as 'No'.
+
+```{r svm_besttune}
+svm_model2$bestTune
+```
+
+```{r svm_confusion_matrix}
+
+svm_pred = predict(svm_model2, newdata = train[, -9])
+table(svm_pred, train$Diabetes)
+
+# misClasificError = mean(svm_pred != train$Diabetes, na.rm=T)
+# svm_acc = (1-misClasificError)
+
+```
+
+### Plot of accuracy rates across Cost parameter values
+
+Finally, we can plot the cross-validated accuracy rates and see that the predictive accuracy does not change appreciably over small enough values of C.
+
+```{r svm_plot}
+ggplot(svm_model2)
+```
+
+## c) Logistic regression
+
+First, we'll perform cross-validation on a simple logistic regression model so that we can estimate the cross-validated accuracy rate alongside other models.
+
+```{r logistic}
+set.seed(1)
+
+## use train to get CV error est.
+logistic_model =
+  train(Diabetes~.,
+        data = train,
+        method = "glm",
+        trControl = tc)
+```
+
+### Parameter estimates - logistic regression
+
+To illustrate what our model looks like, we can look at the parameter estimates:
+
+```{r logistic_tidy}
+
+logistic_model$finalModel %>% 
+  broom::tidy() %>% 
+  knitr::kable()
+
+```
+
+### Confusion matrix - logistic regression
+
+As well as a confusion matrix indicating how the model has classified the training data.
+
+```{r logistic_confusion}
+logistic_pred = predict(logistic_model, newdata = train[, -9])
+table(logistic_pred, train$Diabetes)
+
+# misClasificError = mean(logistic_pred != train$Diabetes, na.rm=T)
+# logistic_acc = (1 - misClasificError)
+
+```
+
+# 3. You will optimize each model using cross-validation to choose hyperparameters in the training data and then compare performance across models.
+
+## Comparing performance across models
+
+First, we'll use the cross-validated accuracy rates of each of our resampled models to select the best-performing model.
+
+```{r}
+resamp <- resamples(list("Classification Tree" = tree_model, 
+                         "SVC" = svm_model2,
+                         "Logistic" = logistic_model))
+
+a = summary(resamp)
+cv_data =
+  a[[3]][[1]] %>% 
+  as_tibble() %>% 
+  knitr::kable(caption = "Cross-validated accuracy estimates")
+```
+
+In the table above, we can see that both mean and median accuracy rates (cross-validated) for `SVC` and `Tree` methods are nearly identical. Let's plot the distributions of their CV accuracy rates to look further.
+
+```{r}
+bwplot(resamp, 
+       metric = "Accuracy", 
+       main = "Cross-validated accuracy distribution for three models",
+       ylab = "Model")
+
+```
+
+We can now see that the distributions of these models' accuracy in resamples actually differs dramatically. SVC's narrow distribution is likely due to its poor response to unbalanced data.
+
+Therefore, since I know the SVC model will likely classify any new data as 'No' for diabetes, I will choose the Classification Tree method with comparable cross-validated accuracy.
+
+# 4. Calculate final accuracy in a test set for the model you determine to be the most appropriate model.
+
+Finally, I'll calculate the test accuracy for the Classification Tree model and 
 
 ```{r tree_test_error}
 
@@ -116,7 +260,7 @@ pred_diab = predict(tree_model, test)
 pred_diab_prob =  predict(tree_model, test, type = "prob")
 
 tree_results = confusionMatrix(pred_diab, test$Diabetes, positive = "Yes")
-print(tree_results)
+#print(tree_results)
 
 analysis = roc(response = test$Diabetes, predictor = pred_diab_prob[,2])
 plot(1 - analysis$specificities, analysis$sensitivities, type = "l",
@@ -132,78 +276,21 @@ tree_results$overall
 
 ```
 
-
-
-## b) Support Vector Classifier (i.e. Support Vector Machine with a linear classifier)
-
-```{r}
-
-set.seed(1)
-
-cost_list = list(cost = 10^seq(-3, 0, length = 100))
-
-# train_outcome =
-#   train[, 9] %>% 
-#   mutate(Diabetes = as.numeric(Diabetes) - 1,
-#          Diabetes = as.logical(Diabetes))
-# 
-# train_features = train[, -9]
-# #train_outcome = train[, 9]
-
-svm_model =
-  tune(svm,
-       train.x = Diabetes~.,
-       data = sample_frac(train, 0.01),
-       kernel = "linear",
-       range = cost_list,
-       scale = TRUE)
-
-svm_model$best.parameters
-svm_model$performances
-plot(svm_model)
-
-# svm_test = 
-#   svm(Diabetes~., 
-#       data = train, 
-#       kernel = "linear", 
-#       cost = 1, scale=TRUE)   
-
-print(svm_test)
-
-svm.pred<-predict(svm.heart, newdata=training[,1:13])
-table(svm.pred, training$outcome)
-
-misClasificError <- mean(svm.pred != training$outcome, na.rm=T)
-print(paste('Accuracy Model 1',1-misClasificError))
-
-features<-training[,1:13]
-outcome<-training$outcome
-
-svm_tune <- tune(svm, train.x=features, train.y=outcome,  kernel="linear", range=list(cost=10^seq(-3, -1, length = 100)))
-
-summary(svm_tune)
-plot(svm_tune)
-
-```
-
-
-## c) Logistic regression
-
-# 3. You will optimize each model using cross-validation to choose hyperparameters in the training data and then compare performance across models.
-
-## Comparing performance across models
-
-```{r}
-resamp <- resamples(list(tree = tree_model, 
-                         svm = svm_model, 
-                         logistic = logistic_model))
-
-summary(resamp)
-
-bwplot(resamp, metric = "RMSE")
-```
-
-
-# 4. Calculate final accuracy in a test set for the model you determine to be the most appropriate model.
+We can see that the test accuracy for the classification tree model is equal to **`r tree_results$overall[[1]]`**.
 
 # 5. List and describe at least two limitations of the model generated by this analysis. Limitations can be analytical or they can be regarding how the model would be used in practice.
+
+**Limitation 1.**
+
+Although the tree-based classification method demonstrated the 'best' predictive accuracy, we can still see that it classified the overwhelming majority of its new data as 'No' due to our unbalanced data. 
+
+```{r tree_confusion_test}
+tree_results$table %>% 
+  knitr::kable(caption = "Confusion matrix, class. tree on test data")
+
+```
+
+Additional methods are needed to address the issue of unbalanced data, in which only `r data %>% group_by(Diabetes) %>% summarize(count = n(), prev = count/nrow(data)) %>% filter(prev<.15) %>% select(prev)` of observations actually have the outcome of interest.
+
+**Limitation 2.**
+
